@@ -7,7 +7,7 @@ steps follow the same order as an Alteryx Designer workflow:
 
     Input -> Data Cleanse -> Formula -> Filter -> Summarize -> Integrity checks -> Output
 
-Run:  python pipeline.py [path/to/file.csv]
+Run:  python pipeline.py [path/to/file.csv] [--allow-dropped-spend]
 Out:  output/variance_report.xlsx, images/accuracy_gap.png, images/variance_scatter.png
 
 The integrity checks hold for any input file. The one-time check that this
@@ -16,7 +16,7 @@ pipeline matches my 2024 Excel workbook lives in tests/test_baseline_2024.py.
 The included data is a practice dataset, not a real company's books.
 """
 
-import sys
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -60,11 +60,19 @@ def load(path: Path) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # 2. Data Cleanse
 # ---------------------------------------------------------------------------
-def cleanse(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
+class DroppedSpendError(Exception):
+    """Raised when rows that carried actual spend were dropped during cleansing."""
+
+
+def cleanse(df: pd.DataFrame, verbose: bool = True) -> tuple:
+    """Returns (clean, dropped). Every row read ends up in exactly one of the two,
+    and every dropped row says why, so nothing disappears silently."""
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
     for col in df.columns:
         df[col] = df[col].str.strip()
+    df.insert(0, "source_line", range(2, len(df) + 2))  # line number in the CSV (header is line 1)
+    raw = df.copy()
 
     df["department"] = df["department"].str.replace(r"\s+", " ", regex=True).replace("", np.nan)
     # Accepts 2024-01-01, 1/1/2024, Jan 2024 and so on; everything snaps to the first of the month
@@ -74,14 +82,41 @@ def cleanse(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
         cleaned = cleaned.str.replace(r"^\((.*)\)$", r"-\1", regex=True)  # (1,234) -> -1234
         df[col] = pd.to_numeric(cleaned, errors="coerce")
 
-    n0 = len(df)
-    df = df.dropna(subset=["department", "month", "budget", "actual"])
-    n_missing = n0 - len(df)
-    df = df.drop_duplicates(subset=["department", "month"], keep="first")
-    n_dupes = n0 - n_missing - len(df)
-    if verbose and (n_missing or n_dupes):
-        print(f"  cleanse: dropped {n_missing} rows with missing fields, {n_dupes} duplicate dept-months")
-    return df.sort_values(["department", "month"]).reset_index(drop=True)
+    # Why each bad row is bad: blank vs present-but-unreadable
+    def problem(col, label):
+        blank = raw[col].isna() | (raw[col] == "")
+        return np.where(df[col].isna(), np.where(blank, f"missing {label}", f"unreadable {label}"), "")
+
+    parts = pd.DataFrame({c: problem(c, c) for c in ("department", "month", "budget", "actual")}, index=df.index)
+    reason = parts.apply(lambda r: "; ".join(x for x in r if x), axis=1)
+    bad = reason != ""
+
+    good = df[~bad]
+    dup = good.duplicated(["department", "month"], keep="first")
+    first = good[~dup].set_index(["department", "month"])
+    dup_reason = {}
+    for i, r in good[dup].iterrows():
+        k = first.loc[(r["department"], r["month"])]
+        same = k["budget"] == r["budget"] and k["actual"] == r["actual"]
+        dup_reason[i] = ("duplicate dept-month, identical to line %d" % k["source_line"]) if same else (
+            "duplicate dept-month, CONFLICTS with line %d (kept: budget %s, actual %s)"
+            % (k["source_line"], f"{k['budget']:,.0f}", f"{k['actual']:,.0f}"))
+    reason.loc[list(dup_reason)] = pd.Series(dup_reason)
+
+    drop_mask = reason != ""
+    dropped = raw[drop_mask].copy()
+    dropped["reason"] = reason[drop_mask]
+    dropped["actual_value"] = df.loc[drop_mask, "actual"]
+    # Spend on an identical duplicate is still counted on the kept row. Any other dropped row with
+    # nonzero actual spend, or an actual we couldn't read (so the spend is unknown), is spend at risk.
+    unknown_actual = dropped["reason"].str.contains("unreadable actual")
+    dropped["spend_at_risk"] = (~dropped["reason"].str.contains("identical")) & (
+        dropped["actual_value"].fillna(0).ne(0) | unknown_actual)
+    clean = df[~drop_mask].sort_values(["department", "month"]).reset_index(drop=True)
+
+    if verbose and len(dropped):
+        print(f"  cleanse: kept {len(clean)} of {len(df)} rows, dropped {len(dropped)} (see the Dropped Rows tab)")
+    return clean, dropped.reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +126,10 @@ def add_variance(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     # Cost centers: positive variance = spent more than planned = Unfavorable
     df["variance"] = df["actual"] - df["budget"]
-    df["variance_pct"] = df["variance"] / df["budget"]
+    # A cost-center budget of zero or less is almost always a data error. The dollar
+    # variance still counts, but a % of it is meaningless (and /0 breaks), so leave it blank.
+    df["budget_ok"] = df["budget"] > 0
+    df["variance_pct"] = (df["variance"] / df["budget"]).where(df["budget_ok"])
     df["abs_variance"] = df["variance"].abs()
     df["fav_unfav"] = np.select(
         [df["variance"] > 0, df["variance"] < 0], ["Unfavorable", "Favorable"], default="On budget"
@@ -135,8 +173,7 @@ def summarize(df: pd.DataFrame) -> dict:
         "gross_accuracy": 1 - gross_miss / budget,
         "material_misses": int(df["material_miss"].sum()),
         "near_misses": int(df["near_miss"].sum()),
-        "jan_aug_variance": df.loc[df["month_num"] <= 8, "variance"].sum(),
-        "sep_dec_variance": df.loc[df["month_num"] >= 9, "variance"].sum(),
+        "bad_budget_rows": int((~df["budget_ok"]).sum()),
     }
 
     def label(v):
@@ -150,19 +187,22 @@ def summarize(df: pd.DataFrame) -> dict:
             variance=("variance", "sum"),
             gross_miss=("abs_variance", "sum"),
             material_misses=("material_miss", "sum"),
-            min_month_budget=("budget", "min"),
-            max_month_budget=("budget", "max"),
         )
         .reset_index()
     )
-    by_dept["variance_pct"] = by_dept["variance"] / by_dept["budget"]
+    ok = df[df["budget_ok"]].groupby("department")["budget"]
+    by_dept["min_month_budget"] = by_dept["department"].map(ok.min())
+    by_dept["max_month_budget"] = by_dept["department"].map(ok.max())
+    by_dept["bad_budget_months"] = by_dept["department"].map((~df["budget_ok"]).groupby(df["department"]).sum())
+    by_dept["variance_pct"] = (by_dept["variance"] / by_dept["budget"]).where(by_dept["budget"] > 0)
     by_dept["gross_accuracy"] = 1 - by_dept["gross_miss"] / by_dept["budget"]
     by_dept["fav_unfav"] = by_dept["variance"].apply(label)
     by_dept["phasing_ratio"] = by_dept["max_month_budget"] / by_dept["min_month_budget"]
     by_dept = by_dept.sort_values("variance", ascending=False).reset_index(drop=True)
 
+    # Group by the actual month (not month number) so a fiscal year like Jul-Jun stays in order
     by_month = (
-        df.groupby(["month_num", "month_name"])
+        df.groupby("month")
         .agg(
             budget=("budget", "sum"),
             actual=("actual", "sum"),
@@ -171,10 +211,21 @@ def summarize(df: pd.DataFrame) -> dict:
             material_misses=("material_miss", "sum"),
         )
         .reset_index()
-        .sort_values("month_num")
+        .sort_values("month")
     )
+    multi_year = by_month["month"].dt.year.nunique() > 1
+    by_month.insert(1, "month_label", by_month["month"].dt.strftime("%b %Y" if multi_year else "%b"))
     by_month["ytd_variance"] = by_month["variance"].cumsum()
     by_month["gross_accuracy"] = 1 - by_month["gross_miss"] / by_month["budget"]
+
+    # Timing: where the running variance peaked, and what happened after. Works for any
+    # period length, unlike a fixed Jan-Aug / Sep-Dec split.
+    peak_i = by_month["ytd_variance"].abs().idxmax()
+    headline["first_month"] = by_month["month_label"].iloc[0]
+    headline["last_month"] = by_month["month_label"].iloc[-1]
+    headline["peak_month"] = by_month.loc[peak_i, "month_label"]
+    headline["peak_ytd_variance"] = by_month.loc[peak_i, "ytd_variance"]
+    headline["after_peak_variance"] = by_month.loc[by_month["month"] > by_month.loc[peak_i, "month"], "variance"].sum()
 
     cols = ["department", "month_name", "budget", "actual", "variance", "variance_pct", "fav_unfav"]
     material = df[df["material_miss"]].sort_values("abs_variance", ascending=False)[cols].reset_index(drop=True)
@@ -185,20 +236,34 @@ def summarize(df: pd.DataFrame) -> dict:
         .reset_index(drop=True)
     )
 
-    phasing = by_dept[["department", "min_month_budget", "max_month_budget", "phasing_ratio"]].copy()
+    phasing = by_dept[["department", "min_month_budget", "max_month_budget", "phasing_ratio", "bad_budget_months"]].copy()
     phasing["flag"] = np.where(phasing["phasing_ratio"] > PHASING_RATIO_FLAG, "Question this phasing", "")
+    phasing.loc[phasing["bad_budget_months"] > 0, "flag"] += np.where(
+        phasing.loc[phasing["bad_budget_months"] > 0, "flag"] != "", "; ", "") + "has budget <= 0 (ratio uses valid months only)"
     phasing = phasing.sort_values("phasing_ratio", ascending=False).reset_index(drop=True)
 
+    bad_budget = df[~df["budget_ok"]][["department", "month", "budget", "actual", "variance"]].copy()
+    bad_budget["issue"] = np.where(bad_budget["budget"] == 0, "Budget is zero", "Budget is negative")
+    bad_budget["what_the_pipeline_did"] = "Kept the dollars in all totals; % variance and materiality not calculated"
+    bad_budget["month"] = bad_budget["month"].dt.strftime("%Y-%m")
+
     return {"headline": headline, "by_dept": by_dept, "by_month": by_month,
-            "material": material, "near": near, "phasing": phasing}
+            "material": material, "near": near, "phasing": phasing, "bad_budget": bad_budget}
 
 
 # ---------------------------------------------------------------------------
 # Integrity checks: these hold for ANY input file, not just the 2024 data
 # ---------------------------------------------------------------------------
-def check_integrity(clean: pd.DataFrame, s: dict, verbose: bool = True) -> list:
+def check_integrity(clean: pd.DataFrame, s: dict, verbose: bool = True, allow_dropped_spend: bool = False) -> list:
     h, dept, month = s["headline"], s["by_dept"], s["by_month"]
+    dropped = s["dropped"]
+    at_risk = dropped.loc[dropped["spend_at_risk"], "actual_value"].sum()
+    rows = s["_rows"]
     checks = [
+        ("Rows read = rows kept + rows dropped",
+         s["rows_read"] == len(clean) + len(dropped)),
+        ("Every dropped row has a reason",
+         bool((dropped["reason"] != "").all())),
         ("One row per department-month",
          not clean.duplicated(["department", "month"]).any()),
         ("Budget in = budget out",
@@ -219,13 +284,35 @@ def check_integrity(clean: pd.DataFrame, s: dict, verbose: bool = True) -> list:
         ("Gross misses >= |net variance|",
          h["gross_misses"] + TOL >= abs(h["net_variance"])),
         ("Material and near-miss flags never overlap",
-         not (s["_rows"]["material_miss"] & s["_rows"]["near_miss"]).any()),
+         not (rows["material_miss"] & rows["near_miss"]).any()),
+        ("Variance % only calculated where budget > 0",
+         bool(rows.loc[~rows["budget_ok"], "variance_pct"].isna().all())),
     ]
     failed = [name for name, ok in checks if not ok]
     if failed:
         raise AssertionError("Integrity checks failed: " + "; ".join(failed))
+
+    # Dropping a row that carried real spend understates what was spent. Stop unless told otherwise.
+    lines = dropped[dropped["spend_at_risk"]]
+    status = True
+    if len(lines):
+        n_unknown = int(lines["actual_value"].isna().sum())
+        amount = f"${at_risk:,.0f} of actual spend" + (
+            f" plus {n_unknown} row(s) whose actual couldn't be read" if n_unknown else "")
+        detail = ", ".join(
+            f"line {r.source_line} ({r.reason}, actual "
+            f"{'unreadable' if pd.isna(r.actual_value) else format(r.actual_value, ',.0f')})"
+            for r in lines.itertuples())
+        if not allow_dropped_spend:
+            raise DroppedSpendError(
+                f"{amount} is on rows that were dropped: {detail}. "
+                "Fix the source file, or rerun with --allow-dropped-spend to report it and continue.")
+        status = f"OVERRIDDEN: {amount} dropped (see Dropped Rows tab)"
+    checks.append(("No actual spend lost on dropped rows", status))
     if verbose:
-        print(f"  integrity: {len(checks)} of {len(checks)} checks passed")
+        n_over = sum(1 for _, ok in checks if isinstance(ok, str))
+        print(f"  integrity: {len(checks) - n_over} of {len(checks)} checks passed"
+              + (f", {n_over} overridden" if n_over else ""))
     return checks
 
 
@@ -245,8 +332,12 @@ def write_excel(df: pd.DataFrame, s: dict, checks: list, path: Path) -> None:
             ("Gross accuracy", h["gross_accuracy"]),
             (f"Material misses (of {h['rows']})", h["material_misses"]),
             (f"Near misses (of {h['rows']})", h["near_misses"]),
-            ("Jan-Aug variance", h["jan_aug_variance"]),
-            ("Sep-Dec variance", h["sep_dec_variance"]),
+            (f"Peak year-to-date variance ({h['peak_month']})", h["peak_ytd_variance"]),
+            (f"Variance after the peak (through {h['last_month']})", h["after_peak_variance"]),
+            ("Rows read", s["rows_read"]),
+            ("Rows dropped", len(s["dropped"])),
+            ("Actual spend on dropped rows", s["dropped"].loc[s["dropped"]["spend_at_risk"], "actual_value"].sum()),
+            ("Rows with budget <= 0", h["bad_budget_rows"]),
             ("Materiality: % threshold", MATERIALITY_PCT),
             ("Materiality: $ threshold", MATERIALITY_USD),
             ("Near miss: % floor", NEAR_MISS_PCT_FLOOR),
@@ -257,15 +348,17 @@ def write_excel(df: pd.DataFrame, s: dict, checks: list, path: Path) -> None:
     detail = df[["department", "month", "budget", "actual", "variance", "variance_pct",
                  "fav_unfav", "abs_variance", "material_miss", "near_miss"]].copy()
     detail["month"] = detail["month"].dt.strftime("%Y-%m")
-    integrity = pd.DataFrame([(n, "Pass" if ok else "FAIL") for n, ok in checks], columns=["Check", "Result"])
+    integrity = pd.DataFrame([(n, ok if isinstance(ok, str) else "Pass" if ok else "FAIL") for n, ok in checks], columns=["Check", "Result"])
 
     sheets = {
         "Summary": summary,
         "Material Misses": s["material"],
         "Near Misses": s["near"],
         "By Department": s["by_dept"],
-        "By Month": s["by_month"].drop(columns="month_num"),
-        "Data Quality": s["phasing"],
+        "By Month": s["by_month"].assign(month=lambda d: d["month"].dt.strftime("%Y-%m")),
+        "Budget Phasing": s["phasing"],
+        "Data Quality": s["bad_budget"],
+        "Dropped Rows": s["dropped"].drop(columns=["actual_value"]),
         "Integrity Checks": integrity,
         "Variance Data": detail,
     }
@@ -284,19 +377,19 @@ def write_excel(df: pd.DataFrame, s: dict, checks: list, path: Path) -> None:
             for col_idx, col in enumerate(frame.columns, start=1):
                 letter = ws.cell(row=1, column=col_idx).column_letter
                 ws.column_dimensions[letter].width = max(14, len(str(col)) + 4)
-                fmt = money if col in money_cols else pct if col in pct_cols else \
-                    '0.0"x"' if col == "phasing_ratio" else None
+                fmt = None if name == "Dropped Rows" else money if col in money_cols else \
+                    pct if col in pct_cols else '0.0"x"' if col == "phasing_ratio" else None
                 if fmt:
                     for row in range(2, len(frame) + 2):
                         ws.cell(row=row, column=col_idx).number_format = fmt
             if name in ("Summary", "Integrity Checks"):
-                ws.column_dimensions["A"].width = 46
+                ws.column_dimensions["A"].width = 50
             if name == "Summary":
                 for r, metric in enumerate(summary["Metric"], start=2):
                     cell = ws.cell(row=r, column=2)
                     if "accuracy" in metric.lower() or "%" in metric:
                         cell.number_format = "0.0%"
-                    elif "(of" not in metric:
+                    elif "(of" not in metric and not metric.startswith("Rows"):
                         cell.number_format = money
 
 
@@ -421,13 +514,14 @@ def chart_variance_scatter(df: pd.DataFrame, path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-def run(csv_path: Path, write_outputs: bool = True, verbose: bool = True) -> dict:
+def run(csv_path: Path, write_outputs: bool = True, verbose: bool = True,
+        allow_dropped_spend: bool = False) -> dict:
     say = print if verbose else (lambda *a, **k: None)
     say("1. Input")
     raw = load(csv_path)
     say(f"  read {len(raw)} rows from {csv_path.name}")
     say("2. Data Cleanse")
-    clean = cleanse(raw, verbose=verbose)
+    clean, dropped = cleanse(raw, verbose=verbose)
     say("3. Formula")
     df = add_variance(clean)
     say("4. Filter")
@@ -435,9 +529,10 @@ def run(csv_path: Path, write_outputs: bool = True, verbose: bool = True) -> dic
     say(f"  {int(df['material_miss'].sum())} material misses, {int(df['near_miss'].sum())} near misses")
     say("5. Summarize")
     s = summarize(df)
-    s["_rows"] = df
+    s.update(_rows=df, dropped=dropped, rows_read=len(raw))
     say("6. Integrity checks")
-    checks = check_integrity(clean, s, verbose=verbose)
+    checks = check_integrity(clean, s, verbose=verbose, allow_dropped_spend=allow_dropped_spend)
+    s["checks"] = checks
     if write_outputs:
         say("7. Output")
         OUTPUT_DIR.mkdir(exist_ok=True)
@@ -448,24 +543,42 @@ def run(csv_path: Path, write_outputs: bool = True, verbose: bool = True) -> dic
     return s
 
 
+def money(v: float) -> str:
+    return ("−" if v < 0 else "") + f"${abs(v):,.0f}"
+
+
 def main() -> None:
-    csv_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CSV
-    s = run(csv_path)
+    ap = argparse.ArgumentParser(description="Budget vs actual variance pipeline")
+    ap.add_argument("csv", nargs="?", default=DEFAULT_CSV, type=Path)
+    ap.add_argument("--allow-dropped-spend", action="store_true",
+                    help="continue even if rows with actual spend had to be dropped (they're listed on the Dropped Rows tab)")
+    args = ap.parse_args()
+    try:
+        s = run(args.csv, allow_dropped_spend=args.allow_dropped_spend)
+    except DroppedSpendError as e:
+        raise SystemExit(f"\nSTOPPED: {e}")
     h = s["headline"]
     print()
-    print(f"Budget ${h['total_budget']:,.0f} | Actual ${h['total_actual']:,.0f} | Net variance ${h['net_variance']:,.0f}")
+    print(f"Budget {money(h['total_budget'])} | Actual {money(h['total_actual'])} | Net variance {money(h['net_variance'])}")
     print(f"Net accuracy {h['net_accuracy']:.1%} | Gross accuracy {h['gross_accuracy']:.1%}")
-    print(f"Total misses ${h['gross_misses']:,.0f}, of which ${h['cancelled_out']:,.0f} cancelled out")
-    print(f"Jan-Aug ${h['jan_aug_variance']:,.0f} | Sep-Dec ${h['sep_dec_variance']:,.0f}")
+    print(f"Total misses {money(h['gross_misses'])}, of which {money(h['cancelled_out'])} cancelled out")
+    print(f"Running variance peaked at {money(h['peak_ytd_variance'])} in {h['peak_month']}, "
+          f"then moved {money(h['after_peak_variance'])} through {h['last_month']}")
     for title, frame in (("Material misses", s["material"]), ("Near misses (over $25K, 4-5%)", s["near"])):
         print(f"{title}:")
         for _, r in frame.iterrows():
             print(f"  {r['department']:<17} {r['month_name']}  {r['variance']:>+10,.0f}  {r['variance_pct']:+.1%}")
-    flagged = s["phasing"][s["phasing"]["flag"] != ""]
+    flagged = s["phasing"][s["phasing"]["phasing_ratio"] > PHASING_RATIO_FLAG]
     if len(flagged):
         print(f"Data quality: {len(flagged)} of {len(s['phasing'])} departments have monthly budgets that swing "
               f"more than {PHASING_RATIO_FLAG}x (worst: {flagged.iloc[0]['department']} at "
               f"{flagged.iloc[0]['phasing_ratio']:.0f}x). Monthly variances there are hard to read.")
+    if h["bad_budget_rows"]:
+        print(f"Data quality: {h['bad_budget_rows']} rows have a budget of zero or less (see the Data Quality tab).")
+    if len(s["dropped"]):
+        print(f"Dropped rows: {len(s['dropped'])} (see the Dropped Rows tab):")
+        for r in s["dropped"].itertuples():
+            print(f"  line {r.source_line}: {r.reason}")
 
 
 if __name__ == "__main__":

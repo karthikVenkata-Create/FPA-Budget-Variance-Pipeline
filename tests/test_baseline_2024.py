@@ -16,8 +16,9 @@ EXCEL_V2 = {
     "cancelled_out": 1_156_098,
     "material_misses": 7,
     "near_misses": 4,
-    "jan_aug_variance": 247_760,
-    "sep_dec_variance": -297_805,
+    "peak_ytd_variance": 247_760,
+    "after_peak_variance": -297_805,
+    "bad_budget_rows": 0,
 }
 
 
@@ -27,6 +28,12 @@ def test_matches_excel_v2_workbook():
         assert round(h[key]) == expected, f"{key}: got {h[key]:,.0f}, expected {expected:,}"
     assert round(h["net_accuracy"], 3) == 0.998
     assert round(h["gross_accuracy"], 3) == 0.957
+    assert h["peak_month"] == "Aug"
+
+
+def test_nothing_dropped():
+    s = p.run(p.DEFAULT_CSV, write_outputs=False, verbose=False)
+    assert s["rows_read"] == 96 and len(s["dropped"]) == 0
 
 
 def test_material_misses_match_workbook():

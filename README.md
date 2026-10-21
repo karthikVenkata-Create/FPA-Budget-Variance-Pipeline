@@ -4,7 +4,7 @@
 
 **[Try the interactive version →](https://karthikvenkata-create.github.io/fpa.html)** · [My website](https://karthikvenkata-create.github.io) · [LinkedIn](https://www.linkedin.com/in/karthik-bommisetty)
 
-I rebuilt my Excel budget-vs-actual project as a Python pipeline. It turns any department-by-month budget vs actual file into a variance report, checks its own math on every run, and on my 2024 file it matches my Excel workbook to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
+I rebuilt my Excel budget-vs-actual project as a Python pipeline. It turns any department-by-month budget vs actual file into a variance report, accounts for every row it reads, checks its own math on every run, and on my 2024 file it matches my Excel workbook to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
 
 > The data is a practice dataset, not a real company's books. The monthly budget phasing in particular is synthetic (see [About the data](#about-the-data)), so the timing patterns below show the method rather than a real finding.
 
@@ -41,7 +41,7 @@ The rule needs both tests. With the dollar test alone, 15 months get flagged. Wi
 
 The monthly budgets don't look like a real company's. Sales is budgeted $18.6K in April, $6.5K in August and $1.09M in September. Marketing goes from $1.31M in January to $4.3K in June. Real department budgets don't swing like that month to month.
 
-The pipeline flags this automatically on a "Data Quality" tab. Any department whose biggest monthly budget is more than 10x its smallest gets flagged, and all 8 departments here do:
+The pipeline flags this automatically on a "Budget Phasing" tab. Any department whose biggest monthly budget is more than 10x its smallest gets flagged, and all 8 departments here do:
 
 | Department | Smallest month | Biggest month | Swing |
 |---|---|---|---|
@@ -62,25 +62,27 @@ The steps follow the same order you'd lay out on an Alteryx Designer canvas:
 
 ```mermaid
 flowchart LR
-    A["📥 Input<br/>any budget vs actual CSV"] --> B["🧹 Data Cleanse<br/>trim, strip $, parse dates,<br/>drop bad rows, dedupe"]
+    A["📥 Input<br/>any budget vs actual CSV"] --> B["🧹 Data Cleanse<br/>trim, strip $, parse dates<br/>every dropped row logged"]
     B --> C["🧮 Formula<br/>variance = actual − budget<br/>fav / unfav / on budget"]
     C --> D["🔍 Filter<br/>material: >$25K AND >5%<br/>near miss: >$25K, 4–5%"]
     D --> E["Σ Summarize<br/>by dept, by month, YTD<br/>net vs gross, phasing"]
-    E --> F["✅ Integrity checks<br/>totals in = totals out<br/>parts add to whole"]
+    E --> F["✅ Integrity checks<br/>rows in = kept + dropped<br/>no spend lost, parts = whole"]
     F --> G["📤 Output<br/>variance_report.xlsx<br/>+ 2 charts"]
 ```
 
 | Step | What it does |
 |---|---|
 | Input | Reads the raw CSV as text so nothing gets silently converted |
-| Data Cleanse | Trims whitespace, strips `$` and commas, reads `(1,234)` as negative, handles mixed date formats, drops rows with missing or unreadable values, removes duplicate dept-months |
-| Formula | Variance, variance %, absolute variance, Favorable / Unfavorable / On budget |
+| Data Cleanse | Trims whitespace, strips `$` and commas, reads `(1,234)` as negative, handles mixed date formats. Rows with missing or unreadable values and duplicate dept-months are dropped, but every one goes on a Dropped Rows tab with its line number and reason. Duplicates that conflict with the kept row are called out separately from identical ones |
+| Formula | Variance, variance %, absolute variance, Favorable / Unfavorable / On budget. A budget of zero or less keeps its dollars in every total but gets no % variance (no divide-by-zero, no backwards signs) and is listed on the Data Quality tab |
 | Filter | Flags material misses and near misses |
-| Summarize | Totals, net and gross accuracy, by department, by month with YTD build, budget phasing check |
-| Integrity checks | Nine checks that hold for **any** input file (below). The run stops if one fails |
-| Output | Excel report (8 tabs) and two PNG charts |
+| Summarize | Totals, net and gross accuracy, by department, by month in date order with a YTD build, where the running variance peaked, budget phasing check |
+| Integrity checks | 13 checks that hold for **any** input file (below). The run stops if one fails |
+| Output | Excel report (10 tabs) and two PNG charts |
 
-**Integrity checks (every run, any data):** one row per department-month; budget in = budget out; actual in = actual out; department totals add to the grand total; monthly totals add to the annual total; year-to-date variance ends at the net variance; variance = actual − budget on every row; gross misses ≥ |net variance|; material and near-miss flags never overlap.
+**Integrity checks (every run, any data):** rows read = rows kept + rows dropped; every dropped row has a reason; one row per department-month; budget in = budget out; actual in = actual out; department totals add to the grand total; monthly totals add to the annual total; year-to-date variance ends at the net variance; variance = actual − budget on every row; gross misses ≥ |net variance|; material and near-miss flags never overlap; variance % only where budget > 0; no actual spend lost on dropped rows.
+
+**Dropped spend stops the run.** If a row that carried actual spend gets dropped (say, a blank budget cell next to $12K of real spend), the pipeline stops and names the line, because silently dropping it would understate what was spent. Spend on an identical duplicate doesn't count, since the kept row already has it. An actual that can't be read counts as at risk, because the amount is unknown. To continue anyway, run with `--allow-dropped-spend`. The check then shows as OVERRIDDEN, not passed, with the dollar amount.
 
 **One-time validation (2024 file only):** `tests/test_baseline_2024.py` checks that this pipeline reproduces my Excel v2 workbook to the dollar. Those expected numbers are hardcoded on purpose, because they only apply to this one file. A new file gets the integrity checks, not this test.
 
@@ -96,7 +98,8 @@ My first version of this project was in Excel with Power Query. It reported 99.8
 
 - **Repeatable.** Next month's file runs through the same steps: `python pipeline.py path/to/new_file.csv`. There's no copy-paste and there are no broken `#REF!` links. My v1 dashboard actually had `#REF!` errors in its filter panel.
 - **Self-checking.** The integrity checks run on every file, so a bad input or a logic change can't quietly shift the totals. The tests include a deliberately broken summary to prove the checks catch it.
-- **Tested on messy input.** `tests/fixtures/messy_sample.csv` has `$` signs, extra spaces, three date formats, an accounting-style negative, a duplicate row and unreadable values. The tests check exactly which rows survive and what they turn into.
+- **Accounts for every row.** Nothing disappears silently. Every dropped row is listed with its reason, and dropping real spend stops the run instead of quietly understating it.
+- **Tested on messy input.** `tests/fixtures/messy_sample.csv` has `$` signs, extra spaces, three date formats, a negative budget, a conflicting duplicate, a blank budget next to real spend, and unreadable values. The tests check exactly which rows survive, why each dropped row was dropped, and that the run stops on the lost spend.
 - **Auditable.** Every rule is in code, in order. A reviewer can see exactly how a number was produced instead of clicking through cells.
 - **Configurable.** Materiality, near-miss and phasing thresholds live in one place instead of being buried in formulas.
 
@@ -107,8 +110,9 @@ Excel is still the right tool for the final output a finance manager actually op
 ```bash
 pip install -r requirements.txt
 python pipeline.py                                    # the 2024 data
-python pipeline.py tests/fixtures/messy_sample.csv    # any other file
-python -m pytest                                      # 16 tests
+python pipeline.py tests/fixtures/messy_sample.csv    # stops: rows with real spend were dropped
+python pipeline.py tests/fixtures/messy_sample.csv --allow-dropped-spend   # report it and continue
+python -m pytest                                      # 28 tests
 ```
 
 Outputs land in `output/variance_report.xlsx` and `images/`.
@@ -118,13 +122,14 @@ Outputs land in `output/variance_report.xlsx` and `images/`.
 ```
 ├── pipeline.py                        # the whole pipeline
 ├── data/budget_vs_actual_2024.csv     # 96 dept-months, raw input
-├── output/variance_report.xlsx        # Summary, Material Misses, Near Misses, By Department,
-│                                      # By Month, Data Quality, Integrity Checks, Variance Data
+├── output/variance_report.xlsx        # Summary, Material Misses, Near Misses, By Department, By Month,
+│                                      # Budget Phasing, Data Quality, Dropped Rows, Integrity Checks,
+│                                      # Variance Data
 ├── images/accuracy_gap.png
 ├── images/variance_scatter.png
 ├── tests/
-│   ├── test_cleanse.py                # messy input file
-│   ├── test_integrity.py              # checks pass on new data, catch a broken summary
+│   ├── test_cleanse.py                # messy input: dropped-row reasons, duplicates, parsing
+│   ├── test_integrity.py              # new and fiscal-year data, lost rows, dropped spend, bad budgets
 │   ├── test_baseline_2024.py          # one-time match to the Excel v2 workbook
 │   └── fixtures/messy_sample.csv
 └── requirements.txt
@@ -132,7 +137,7 @@ Outputs land in `output/variance_report.xlsx` and `images/`.
 
 ## What's next
 
-The natural next step is a full-year reforecast: given actuals through September, where does the year land? That's most of what FP&A teams actually do, more than looking backward at variance. The pipeline already handles partial-year files (there's a test for it), so a reforecast would build on top of it.
+The natural next step is a full-year reforecast: given actuals through September, where does the year land? That's most of what FP&A teams actually do, more than looking backward at variance. The pipeline already handles partial-year and fiscal-year files (there are tests for both), so a reforecast would build on top of it.
 
 ## Project history
 
@@ -140,6 +145,6 @@ The natural next step is a full-year reforecast: given actuals through September
 |---|---|---|---|
 | v1 | Mar 2026 | Excel + Power Query | Original dashboard, reported 99.8% accuracy |
 | v2 | Oct 2026 | Excel rebuild | Fixed sign logic, added gross accuracy, materiality, YTD timing |
-| v3 | Oct 2026 | Python pipeline | This repo. Same numbers, plus integrity checks, near misses, phasing check and tests |
+| v3 | Oct 2026 | Python pipeline | This repo. Same numbers, plus integrity checks, row accounting, data-quality flags, near misses and tests |
 
 **Tools:** Python (pandas, matplotlib, openpyxl, pytest) · Excel · Power Query · Alteryx Designer Core certified

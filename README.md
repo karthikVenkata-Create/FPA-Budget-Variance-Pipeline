@@ -2,6 +2,8 @@
 
 **Karthik Bommisetty** · UIC MBA (Finance) + MS Business Analytics
 
+**[Try the interactive version →](https://karthikvenkata-create.github.io/fpa.html)** · [My website](https://karthikvenkata-create.github.io) · [LinkedIn](https://www.linkedin.com/in/karthik-bommisetty)
+
 I rebuilt my Excel budget-vs-actual project as a Python pipeline that runs end to end in one command and reconciles to my Excel workbook down to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
 
 > The data is a practice dataset, not a real company's books.

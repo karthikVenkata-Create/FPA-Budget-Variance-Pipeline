@@ -1,32 +1,23 @@
-# FP&A Budget Variance Pipeline
+# FP&A Budget Variance Pipeline (Alteryx)
 
-**Karthik Bommisetty** · UIC MBA (Finance) + MS Business Analytics
+**Karthik Bommisetty** · UIC MBA (Finance) + MS Business Analytics · Alteryx Designer Core certified
 
-**[Try the interactive version →](https://karthikvenkata-create.github.io/fpa.html)** · [My website](https://karthikvenkata-create.github.io) · [LinkedIn](https://www.linkedin.com/in/karthik-bommisetty)
+**[Try the interactive version →](https://karthikvenkata-create.github.io/fpa.html)** · [Download the workflow](https://github.com/karthikVenkata-Create/FPA-Budget-Variance-Pipeline/archive/refs/heads/main.zip) · [My website](https://karthikvenkata-create.github.io) · [LinkedIn](https://www.linkedin.com/in/karthik-bommisetty)
 
-I rebuilt my Excel budget-vs-actual project as an automated pipeline, in two versions that give identical numbers:
-
-- **[Alteryx Designer workflow](alteryx/)**: the main version. It reads each department's own file with a wildcard input, logs every dropped row with its reason, and raises an error in the Results window if the numbers don't hold together.
-- **Python pipeline** (this folder): the tested reference. 32 pytest tests, including 4 that check the Alteryx outputs against it.
-
-Both turn any department-by-month budget vs actual data into a variance report, account for every row they read, and match my original Excel workbook to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
-
-![Alteryx canvas](alteryx/images/alteryx_canvas.png)
+An Alteryx Designer workflow that takes each department's budget-vs-actual file, accounts for every row it reads, and builds the variance report. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months (96 department-months). On this data the workflow matches my original Excel workbook to the dollar.
 
 > The data is a practice dataset, not a real company's books. The monthly budget phasing in particular is synthetic (see [About the data](#about-the-data)), so the timing patterns below show the method rather than a real finding.
 
-## Summary
+![Alteryx canvas](images/alteryx_canvas.png)
+
+## What it found
 
 - **The headline number hides the misses.** Net budget accuracy is **99.8%**, but only because overspends and underspends cancel each other out. Total misses come to **$1.21M** ($578K over budget, $628K under), and **$1.16M** of that cancelled out, leaving a net of −$50K. Counting every miss, accuracy is **95.7%**.
-- **7 of 96 department-months were material misses**, meaning both more than $25K *and* more than 5% off budget. Another 4 were near misses: over $25K but between 4% and 5%.
+- **7 of 96 department-months were material misses**, meaning more than $25K *and* more than 5% off budget. Another 4 were near misses: over $25K but between 4% and 5%.
 - **The year looks on plan because of timing.** Spend ran $248K over plan through August, then $298K under from September to December. Three of the seven material misses are R&D in Q4.
 - **The biggest finding is about the budget itself.** Every department's monthly budget swings at least 20x across the year, and Customer Success swings 512x. In a real company, phasing this lumpy would be the first thing I'd question, because it makes monthly variances almost meaningless.
 
-![Net vs gross accuracy](images/accuracy_gap.png)
-
-![Variance scatter](images/variance_scatter.png)
-
-## The 7 material misses
+### The 7 material misses
 
 | Department | Month | Variance | % of budget |
 |---|---|---|---|
@@ -38,125 +29,85 @@ Both turn any department-by-month budget vs actual data into a variance report, 
 | Finance | Dec | +$36,319 | +7.9% |
 | R&D | Nov | −$29,963 | −7.1% |
 
-Positive means overspend (unfavorable). These are cost centers, so coming in under budget is favorable, and a variance of exactly $0 is labeled "On budget."
+Positive means overspend (unfavorable). These are cost centers, so coming in under budget is favorable.
 
-**Near misses.** I define a near miss as passing the dollar test (over $25K) but landing between 4% and 5%. That gives exactly four: HR Nov (−$60,692, −4.9%), R&D Apr (+$39,045, +4.7%), Customer Success Dec (−$32,685, −4.7%) and Marketing Jul (+$41,995, +4.6%). All the thresholds are config values at the top of `pipeline.py`, so a stricter policy is a one-line change.
-
-The rule needs both tests. With the dollar test alone, 15 months get flagged. With the percent test alone, 47 do, mostly small months where a few thousand dollars is a big percentage. Requiring both gets it down to the 7 that matter on both counts.
-
-## About the data
-
-The monthly budgets don't look like a real company's. Sales is budgeted $18.6K in April, $6.5K in August and $1.09M in September. Marketing goes from $1.31M in January to $4.3K in June. Real department budgets don't swing like that month to month.
-
-The pipeline flags this automatically on a "Budget Phasing" tab. Any department whose biggest monthly budget is more than 10x its smallest gets flagged, and all 8 departments here do:
-
-| Department | Smallest month | Biggest month | Swing |
-|---|---|---|---|
-| Customer Success | $1,363 | $697,211 | 512x |
-| Marketing | $4,280 | $1,310,207 | 306x |
-| Sales | $6,473 | $1,090,283 | 168x |
-| Operations | $15,447 | $936,211 | 61x |
-| Finance | $22,781 | $1,107,759 | 49x |
-| R&D | $27,468 | $912,818 | 33x |
-| HR | $37,393 | $1,239,326 | 33x |
-| IT | $28,305 | $592,649 | 21x |
-
-Here's what that means for the analysis. The annual and department-level numbers (net vs gross accuracy, which departments over- or underspent) still hold up. The month-level story doesn't. Patterns like "R&D underspent in Q4" are what the method would surface, but with phasing this lumpy, a monthly variance mostly tells you the budget was put in the wrong month. On a real budget, I'd want the phasing fixed before reading anything into individual months.
-
-## Pipeline
-
-Both versions run the same steps. The [Alteryx README](alteryx/) maps each one to its tools, and lists five mistakes in a first-draft Alteryx plan that would have produced wrong numbers. The Python version:
-
-```mermaid
-flowchart LR
-    A["📥 Input<br/>any budget vs actual CSV"] --> B["🧹 Data Cleanse<br/>trim, strip $, parse dates<br/>every dropped row logged"]
-    B --> C["🧮 Formula<br/>variance = actual − budget<br/>fav / unfav / on budget"]
-    C --> D["🔍 Filter<br/>material: >$25K AND >5%<br/>near miss: >$25K, 4–5%"]
-    D --> E["Σ Summarize<br/>by dept, by month, YTD<br/>net vs gross, phasing"]
-    E --> F["✅ Integrity checks<br/>rows in = kept + dropped<br/>no spend lost, parts = whole"]
-    F --> G["📤 Output<br/>variance_report.xlsx<br/>+ 2 charts"]
-```
-
-| Step | What it does |
-|---|---|
-| Input | Reads the raw CSV as text so nothing gets silently converted |
-| Data Cleanse | Trims whitespace, strips `$` and commas, reads `(1,234)` as negative, handles mixed date formats. Rows with missing or unreadable values and duplicate dept-months are dropped, but every one goes on a Dropped Rows tab with its line number and reason. Duplicates that conflict with the kept row are called out separately from identical ones |
-| Formula | Variance, variance %, absolute variance, Favorable / Unfavorable / On budget. A budget of zero or less keeps its dollars in every total but gets no % variance (no divide-by-zero, no backwards signs) and is listed on the Data Quality tab |
-| Filter | Flags material misses and near misses |
-| Summarize | Totals, net and gross accuracy, by department, by month in date order with a YTD build, where the running variance peaked, budget phasing check |
-| Integrity checks | 13 checks that hold for **any** input file (below). The run stops if one fails |
-| Output | Excel report (10 tabs) and two PNG charts |
-
-**Integrity checks (every run, any data):** rows read = rows kept + rows dropped; every dropped row has a reason; one row per department-month; budget in = budget out; actual in = actual out; department totals add to the grand total; monthly totals add to the annual total; year-to-date variance ends at the net variance; variance = actual − budget on every row; gross misses ≥ |net variance|; material and near-miss flags never overlap; variance % only where budget > 0; no actual spend lost on dropped rows.
-
-**Dropped spend stops the run.** If a row that carried actual spend gets dropped (say, a blank budget cell next to $12K of real spend), the pipeline stops and names the line, because silently dropping it would understate what was spent. Spend on an identical duplicate doesn't count, since the kept row already has it. An actual that can't be read counts as at risk, because the amount is unknown. To continue anyway, run with `--allow-dropped-spend`. The check then shows as OVERRIDDEN, not passed, with the dollar amount.
-
-**One-time validation (2024 file only):** `tests/test_baseline_2024.py` checks that this pipeline reproduces my Excel v2 workbook to the dollar. Those expected numbers are hardcoded on purpose, because they only apply to this one file. A new file gets the integrity checks, not this test.
-
-**Accuracy definitions**
-
-- Net accuracy = 1 − |Σ variance| / Σ budget, which lets misses cancel out
-- Gross accuracy = 1 − Σ |variance| / Σ budget, which counts every miss
-- Cancelled out = Σ |variance| − |Σ variance|
-
-## Why a pipeline instead of Excel
-
-My first version of this project was in Excel with Power Query. It reported 99.8% accuracy and called Marketing the "top performer" for going over budget, and both of those were wrong. Rebuilding it as a pipeline is what made the errors obvious, and it also changes how the work holds up:
-
-- **Repeatable.** Next month's file runs through the same steps: `python pipeline.py path/to/new_file.csv`. There's no copy-paste and there are no broken `#REF!` links. My v1 dashboard actually had `#REF!` errors in its filter panel.
-- **Self-checking.** The integrity checks run on every file, so a bad input or a logic change can't quietly shift the totals. The tests include a deliberately broken summary to prove the checks catch it.
-- **Accounts for every row.** Nothing disappears silently. Every dropped row is listed with its reason, and dropping real spend stops the run instead of quietly understating it.
-- **Tested on messy input.** `tests/fixtures/messy_sample.csv` has `$` signs, extra spaces, three date formats, a negative budget, a conflicting duplicate, a blank budget next to real spend, and unreadable values. The tests check exactly which rows survive, why each dropped row was dropped, and that the run stops on the lost spend.
-- **Auditable.** Every rule is in code, in order. A reviewer can see exactly how a number was produced instead of clicking through cells.
-- **Configurable.** Materiality, near-miss and phasing thresholds live in one place instead of being buried in formulas.
-
-Excel is still the right tool for the final output a finance manager actually opens, so that's where the pipeline sends its results.
+The near misses are HR Nov (−4.9%), R&D Apr (+4.7%), Customer Success Dec (−4.7%) and Marketing Jul (+4.6%). The rule needs both tests: the dollar test alone flags 15 months, the percent test alone flags 47 (mostly tiny months), and requiring both narrows it to the 7 that matter on both counts.
 
 ## Run it
 
-**Alteryx:** open `alteryx/FPA_Variance_Pipeline.yxmd` in Designer and press Run (details in [alteryx/README.md](alteryx/)).
+1. Download the repo (the link above, or clone it) and open `FPA_Variance_Pipeline.yxmd` in Alteryx Designer. I built and tested it on 2025.2.
+2. Press **Run**.
+3. The Results window should show 0 errors, 0 warnings and *"Integrity: all checks passed. 96 rows read, 96 kept, 0 dropped. Net accuracy 99.8%, gross accuracy 95.7%, 7 material misses."*
+4. The outputs land in `output/`.
 
-**Python:**
+To see the error handling, open `FPA_Variance_Pipeline_messy_test.yxmd`. It reads two messy submissions from `tests/messy_departments/` (dollar signs, extra spaces, three date formats, a negative budget, a conflicting duplicate, a blank budget next to real spend, unreadable values). The run finishes with 1 error: *"STOPPED: $1,033,999 of actual spend plus 1 row(s) whose actual couldn't be read is on rows that were dropped (5 rows, listed in dropped_rows.csv)..."*. Every output is still written, so `dropped_rows.csv` shows exactly which line in which file broke, and why.
 
-```bash
-pip install -r requirements.txt
-python pipeline.py                                    # the 2024 data
-python pipeline.py tests/fixtures/messy_sample.csv    # stops: rows with real spend were dropped
-python pipeline.py tests/fixtures/messy_sample.csv --allow-dropped-spend   # report it and continue
-python -m pytest                                      # 32 tests, incl. Alteryx-vs-Python cross-check
-```
+## What the workflow does
 
-Outputs land in `output/variance_report.xlsx` and `images/`.
+| Section | Tools | What happens |
+|---|---|---|
+| 1. Read | Input Data (wildcard `data/departments/*.csv`), Multi-Row Formula | Stacks all 8 department files into one stream. Each row keeps its file name and line number so a bad row can be traced back to its source |
+| 2. Parse and validate | Formula, Filter, Unique | Turns text into numbers and dates, strips `$` and commas, reads `(1,000)` as negative, and accepts `2024-01-01`, `3/1/2024` and `Feb 2024`. A row that can't be read gets a reason (`missing budget`, `unreadable month`...) and goes to the dropped-row log. Duplicate dept-months are split off |
+| 3. Variance and materiality | Text Input (SETTINGS), Append Fields, Formula, Select, Filter, Sort | Variance, Fav / Unfav / On budget, and the material and near-miss flags. **All rows stay in the main stream**; the filters only add exception lists on the side |
+| 4. Dropped-row log | Join, Formula, Union, Select, Text Input, Summarize | Matches each duplicate to the row that was kept and labels it *identical* or *CONFLICTS (kept: budget X, actual Y)*. Flags any dropped row that carried real spend |
+| 5. Summaries | Summarize, Formula, Sort, Running Total | By department (with the budget-phasing check), by month (with the YTD build), and company totals, all from every row |
+| 6. Integrity checks | Summarize, Append Fields, Formula, Message | Rows read = kept + dropped, department and monthly totals add up to the grand total, YTD ends at the net variance, plus four more and the dropped-spend rule. Anything that fails raises an **Error** in the Results window |
+
+Thresholds live in the **SETTINGS** Text Input tool on the canvas. Set `allow_dropped_spend` to 1 to report dropped spend and continue. The error then becomes a warning marked OVERRIDDEN.
+
+**Accuracy definitions:** net accuracy = 1 − |Σ variance| ÷ Σ budget (misses cancel out). Gross accuracy = 1 − Σ |variance| ÷ Σ budget (every miss counts). Cancelled out = Σ |variance| − |Σ variance|.
+
+## Mistakes it avoids
+
+These came from a first-draft plan for the workflow. Each one would have produced wrong numbers:
+
+- **Summarizing the filter's False side.** Sending only the "not material" rows to Summarize drops the 7 material months from the executive totals, leaving net variance $27K off and gross misses $335K short.
+- **Calculating gross accuracy per row.** A row-level `1 − |variance| / budget` can't be added or averaged into 95.7%. It has to be calculated after the Summarize.
+- **Using Data Cleanse to strip `$` and commas.** Its "remove punctuation" option also strips minus signs and decimal points, so a −1,000 budget would quietly become 1000. A regex Formula handles it instead.
+- **`ToNumber("")` returns 0 in Alteryx.** A blank budget cell would silently become a $0 budget. The workflow only converts text that actually looks like a number, so a blank is logged as `missing budget`.
+- **Dividing by a zero or negative budget.** For those rows the % variance is left blank, the dollars stay in every total, and the department is flagged in `by_department.csv`.
+
+## About the data
+
+The monthly budgets don't look like a real company's. Sales is budgeted $18.6K in April, $6.5K in August and $1.09M in September. Marketing goes from $1.31M in January to $4.3K in June. The workflow flags this automatically in `by_department.csv`: any department whose biggest monthly budget is more than 10x its smallest gets marked "Question this phasing", and all 8 here do (from 21x for IT up to 512x for Customer Success).
+
+The annual and department-level numbers still hold up. The month-level story doesn't. With phasing this lumpy, a monthly variance mostly tells you the budget was put in the wrong month, so on a real budget I'd want the phasing fixed before reading anything into individual months.
+
+## Outputs
+
+| File | What's in it |
+|---|---|
+| `summary.csv` | Headline numbers and the result of every integrity check |
+| `variance_data.csv` | Every kept row with variance, %, Fav / Unfav and flags, plus its source file and line |
+| `material_misses.csv` / `near_misses.csv` | The 7 and the 4 |
+| `by_department.csv` | Totals, gross accuracy and budget-phasing ratio per department |
+| `by_month.csv` | Monthly totals and the YTD variance build |
+| `dropped_rows.csv` | Every dropped row, its file and line, the reason, and whether it carried spend (empty on the clean data) |
+
+`output_messy_test/` holds the outputs from the messy-data run.
 
 ## Repo layout
 
 ```
-├── alteryx/
-│   ├── FPA_Variance_Pipeline.yxmd         # the Alteryx workflow (reads data/departments/*.csv)
-│   ├── FPA_Variance_Pipeline_messy_test.yxmd
-│   ├── build_workflow.py                  # generates both .yxmd files from one definition
-│   ├── data/departments/                  # one CSV per department
-│   ├── output/, output_messy_test/        # outputs from my Designer runs
-│   └── README.md
-├── pipeline.py                        # the Python pipeline
-├── data/budget_vs_actual_2024.csv     # 96 dept-months, raw input
-├── output/variance_report.xlsx        # Summary, Material Misses, Near Misses, By Department, By Month,
-│                                      # Budget Phasing, Data Quality, Dropped Rows, Integrity Checks,
-│                                      # Variance Data
-├── images/accuracy_gap.png
-├── images/variance_scatter.png
-├── tests/
-│   ├── test_cleanse.py                # messy input: dropped-row reasons, duplicates, parsing
-│   ├── test_integrity.py              # new and fiscal-year data, lost rows, dropped spend, bad budgets
-│   ├── test_baseline_2024.py          # one-time match to the Excel v2 workbook
-│   ├── test_alteryx_matches_python.py # Alteryx outputs = Python results
-│   └── fixtures/messy_sample.csv
-└── requirements.txt
+├── FPA_Variance_Pipeline.yxmd             # the workflow
+├── FPA_Variance_Pipeline_messy_test.yxmd  # same logic, reads tests/messy_departments/
+├── build_workflow.py                      # generates both .yxmd files from one definition
+├── data/departments/                      # one CSV per department
+├── tests/messy_departments/               # deliberately messy submissions
+├── output/, output_messy_test/            # outputs from my Designer runs
+└── images/alteryx_canvas.png
 ```
+
+Both workflows are generated by `build_workflow.py`, so the clean and messy versions can't drift apart and every expression can be reviewed as plain text.
+
+## Known limits
+
+- Every file has to use the same four column headers (`department, month, budget, actual`). The wildcard input doesn't rename mismatched headers.
+- When a check fails, the run ends with an error, but the outputs are still written. That's on purpose, so you can see why it failed. Check that the Results window shows 0 errors before trusting the numbers. `summary.csv` also records `all_checks_pass` and `dropped_spend_status`.
 
 ## What's next
 
-The natural next step is a full-year reforecast: given actuals through September, where does the year land? That's most of what FP&A teams actually do, more than looking backward at variance. The pipeline already handles partial-year and fiscal-year files (there are tests for both), so a reforecast would build on top of it.
+A full-year reforecast: given actuals through September, where does the year land? That's most of what FP&A teams actually do. The workflow groups months by their actual date rather than calendar position, so it is set up for partial-year and fiscal-year files, and a reforecast would build on top of it.
 
 ## Project history
 
@@ -164,7 +115,4 @@ The natural next step is a full-year reforecast: given actuals through September
 |---|---|---|---|
 | v1 | Mar 2026 | Excel + Power Query | Original dashboard, reported 99.8% accuracy |
 | v2 | Oct 2026 | Excel rebuild | Fixed sign logic, added gross accuracy, materiality, YTD timing |
-| v3 | Oct 2026 | Python pipeline | Same numbers, plus integrity checks, row accounting, data-quality flags, near misses and tests |
-| v4 | Oct 2026 | Alteryx Designer | The same pipeline as a Designer workflow reading each department's file, cross-checked against v3 |
-
-**Tools:** Alteryx Designer (Core certified) · Python (pandas, matplotlib, openpyxl, pytest) · Excel · Power Query
+| v3 | Oct 2026 | Alteryx Designer | This repo: automated, accounts for every row, checks itself |

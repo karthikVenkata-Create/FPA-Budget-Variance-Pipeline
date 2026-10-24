@@ -1,0 +1,5 @@
+department,month,budget,actual,variance,variance_pct,abs_variance,fav_unfav,material_miss,near_miss,FileName,source_line
+Customer Success,2024-12-01,697211,664526,-32685,-4.6879639018891e-02,32685,Favorable,0,1,Customer_Success,13
+HR,2024-11-01,1239326,1178634,-60692,-4.89717798222582e-02,60692,Favorable,0,1,HR,12
+Marketing,2024-07-01,913634,955629,41995,4.59647955308143e-02,41995,Unfavorable,0,1,Marketing,8
+R&D,2024-04-01,831785,870830,39045,4.69412167807787e-02,39045,Unfavorable,0,1,RandD,5

@@ -1,0 +1,6 @@
+FileName,source_line,department,month,budget,actual,reason,spend_at_risk
+submission_B,3,IT,2024-06-01,,12000,missing budget,1
+submission_B,4,,2024-07-01,10000,11000,missing department,1
+submission_B,5,Finance,not a date,10000,11000,unreadable month,1
+submission_B,6,Finance,2024-08-01,"$40,000",abc,unreadable actual,1
+submission_A,6,Sales,2024-04-01,999999,999999,"duplicate dept-month, CONFLICTS with submission_A line 5 (kept: budget -1,000, actual 500)",1

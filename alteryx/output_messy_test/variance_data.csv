@@ -1,0 +1,6 @@
+department,month,budget,actual,variance,variance_pct,abs_variance,fav_unfav,material_miss,near_miss,FileName,source_line
+Customer Success,2024-05-01,80000,76000,-4000,-0.05,4000,Favorable,0,0,submission_B,2
+Marketing,2024-01-01,100000,108000,8000,0.08,8000,Unfavorable,0,0,submission_A,2
+Marketing,2024-02-01,50000,49000,-1000,-0.02,1000,Favorable,0,0,submission_A,3
+Sales,2024-03-01,200000,200000,0,0,0,On budget,0,0,submission_A,4
+Sales,2024-04-01,-1000,500,1500,,1500,Unfavorable,0,0,submission_A,5

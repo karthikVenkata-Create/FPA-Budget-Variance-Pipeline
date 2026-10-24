@@ -1,0 +1,409 @@
+<?xml version="1.0"?>
+<AlteryxDocument yxmdVer="2025.2">
+  <Nodes>
+    <Node ToolID="100">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="60" y="295" width="235" height="250" /></GuiSettings>
+      <Properties><Configuration><Caption>1. Read every department's file</Caption>
+        <Style TextColor="#314c4a" FillColor="#ecf2f2" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput"><Position x="90" y="340" /></GuiSettings>
+      <Properties><Configuration><Passwords /><File OutputFileName="FileName" RecordLimit="" SearchSubDirs="False" FileFormat="0">data\departments\*.csv</File>
+      <FormatSpecificOptions><CodePage>28591</CodePage><Delimeter>,</Delimeter><IgnoreErrors>False</IgnoreErrors>
+      <FieldLen>254</FieldLen><AllowShareWrite>False</AllowShareWrite><HeaderRow>True</HeaderRow>
+      <IgnoreQuotes>DoubleQuotes</IgnoreQuotes><ImportLine>1</ImportLine></FormatSpecificOptions></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Read every department file (wildcard)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileInput" />
+    </Node>
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.MultiRowFormula.MultiRowFormula"><Position x="200" y="340" /></GuiSettings>
+      <Properties><Configuration><UpdateField value="False" /><UpdateField_Name>source_line</UpdateField_Name><CreateField_Name>source_line</CreateField_Name>
+      <CreateField_Type>Int32</CreateField_Type><CreateField_Size>4</CreateField_Size><OtherRows>Empty</OtherRows>
+      <NumRows value="1" /><Expression>IIF(IsEmpty([Row-1:source_line]) OR [Row-1:source_line] = 0, 2, [Row-1:source_line] + 1)</Expression><GroupByFields><Field field="FileName" /></GroupByFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Line number in its CSV (header = line 1)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxMultiRowFormula" />
+    </Node>
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="200" y="450" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="FileName" action="Count" rename="rows_read" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Rows read</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="101">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="380" y="295" width="345" height="140" /></GuiSettings>
+      <Properties><Configuration><Caption>2. Parse and validate every row</Caption>
+        <Style TextColor="#314c4a" FillColor="#ecf2f2" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="410" y="340" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression='Trim(REGEX_Replace([department], "\s+", " "))' field="department_clean" size="254" type="V_String" /><FormulaField expression="Trim([month])" field="month_txt" size="254" type="V_String" /><FormulaField expression='IF REGEX_Match([month_txt], "\d{4}-\d{1,2}-\d{1,2}") THEN DateTimeTrim(DateTimeParse([month_txt], "%Y-%m-%d"), "month")&#10;ELSEIF REGEX_Match([month_txt], "\d{1,2}/\d{1,2}/\d{4}") THEN DateTimeTrim(DateTimeParse([month_txt], "%m/%d/%Y"), "month")&#10;ELSEIF REGEX_Match([month_txt], "[A-Za-z]{3} \d{4}") THEN DateTimeTrim(DateTimeParse("01 " + [month_txt], "%d %b %Y"), "month")&#10;ELSE Null() ENDIF' field="month_date" size="10" type="Date" /><FormulaField expression='REGEX_Replace(REGEX_Replace(Trim([budget]), "[$,\s]", ""), "^\((.*)\)$", "-$1")' field="budget_txt" size="254" type="V_String" /><FormulaField expression='REGEX_Replace(REGEX_Replace(Trim([actual]), "[$,\s]", ""), "^\((.*)\)$", "-$1")' field="actual_txt" size="254" type="V_String" /><FormulaField expression='IIF(REGEX_Match([budget_txt], "-?\d+(\.\d+)?"), ToNumber([budget_txt]), Null())' field="budget_num" size="8" type="Double" /><FormulaField expression='IIF(REGEX_Match([actual_txt], "-?\d+(\.\d+)?"), ToNumber([actual_txt]), Null())' field="actual_num" size="8" type="Double" /><FormulaField expression='REGEX_Replace(&#10;  IIF(IsEmpty([department_clean]), "missing department; ", "") +&#10;  IIF(IsNull([month_date]), IIF(IsEmpty([month_txt]), "missing month; ", "unreadable month; "), "") +&#10;  IIF(IsNull([budget_num]), IIF(IsEmpty([budget_txt]), "missing budget; ", "unreadable budget; "), "") +&#10;  IIF(IsNull([actual_num]), IIF(IsEmpty([actual_txt]), "missing actual; ", "unreadable actual; "), ""),&#10;";\s*$", "")' field="reason" size="254" type="V_String" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Parse text to numbers and dates; record why a row is bad</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="5">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter"><Position x="520" y="340" /></GuiSettings>
+      <Properties><Configuration><Expression>IsEmpty([reason])</Expression><Mode>Custom</Mode></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Row readable?</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFilter" />
+    </Node>
+    <Node ToolID="6">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Unique.Unique"><Position x="630" y="340" /></GuiSettings>
+      <Properties><Configuration><UniqueFields><Field field="department_clean" /><Field field="month_date" /></UniqueFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>One row per dept-month</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxUnique" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="103">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="810" y="157" width="675" height="388" /></GuiSettings>
+      <Properties><Configuration><Caption>3. Variance and materiality (all rows stay in; filters only add exception lists)</Caption>
+        <Style TextColor="#314c4a" FillColor="#eef3fb" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="17">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.TextInput.TextInput"><Position x="840" y="202" /></GuiSettings>
+      <Properties><Configuration><NumRows value="1" /><Fields><Field name="materiality_usd" /><Field name="materiality_pct" /><Field name="near_miss_pct_floor" /><Field name="phasing_ratio_flag" /><Field name="allow_dropped_spend" /></Fields><Data><r><c>25000</c><c>0.05</c><c>0.04</c><c>10</c><c>0</c></r></Data></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>SETTINGS: edit thresholds here (allow_dropped_spend: 1 = report and continue)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxTextInput" />
+    </Node>
+    <Node ToolID="18">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AppendFields.AppendFields"><Position x="840" y="340" /></GuiSettings>
+      <Properties><Configuration><CartesianMode>Error</CartesianMode><SelectConfiguration><Configuration outputConnection="Output"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Attach settings to every row</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxAppendFields" />
+    </Node>
+    <Node ToolID="19">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="950" y="340" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression="[actual_num] - [budget_num]" field="variance" size="8" type="Double" /><FormulaField expression="IIF([budget_num] &gt; 0, 1, 0)" field="budget_ok" size="4" type="Int32" /><FormulaField expression="1 - [budget_ok]" field="bad_budget" size="4" type="Int32" /><FormulaField expression="IIF([budget_ok] = 1, [variance] / [budget_num], Null())" field="variance_pct" size="8" type="Double" /><FormulaField expression="ABS([variance])" field="abs_variance" size="8" type="Double" /><FormulaField expression='IIF([variance] &gt; 0, "Unfavorable", IIF([variance] &lt; 0, "Favorable", "On budget"))' field="fav_unfav" size="20" type="V_String" /><FormulaField expression="IIF([abs_variance] &gt; [materiality_usd] AND !IsNull([variance_pct]) AND ABS([variance_pct]) &gt; [materiality_pct], 1, 0)" field="material_miss" size="4" type="Int32" /><FormulaField expression="IIF([abs_variance] &gt; [materiality_usd] AND !IsNull([variance_pct]) AND ABS([variance_pct]) &gt; [near_miss_pct_floor]&#10;    AND ABS([variance_pct]) &lt;= [materiality_pct], 1, 0)" field="near_miss" size="4" type="Int32" /><FormulaField expression="IIF([variance] &gt; 0, [variance], 0)" field="over_budget" size="8" type="Double" /><FormulaField expression="IIF([variance] &lt; 0, -[variance], 0)" field="under_budget" size="8" type="Double" /><FormulaField expression="IIF([budget_ok] = 1, [budget_num], Null())" field="budget_for_phasing" size="8" type="Double" /><FormulaField expression="IIF([budget_ok] = 0 AND !IsNull([variance_pct]), 1, 0)" field="pct_violation" size="4" type="Int32" /><FormulaField expression="[material_miss] * [near_miss]" field="both_flags" size="4" type="Int32" /><FormulaField expression='DateTimeFormat([month_date], "%b")' field="month_name" size="10" type="V_String" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Variance, Fav / Unfav, material and near miss</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="20">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect"><Position x="1060" y="340" /></GuiSettings>
+      <Properties><Configuration><OrderChanged value="True" /><CommaDecimal value="False" /><SelectFields><SelectField field="department_clean" selected="True" rename="department" /><SelectField field="month_date" selected="True" rename="month" /><SelectField field="budget_num" selected="True" rename="budget" /><SelectField field="actual_num" selected="True" rename="actual" /><SelectField field="variance" selected="True" /><SelectField field="variance_pct" selected="True" /><SelectField field="abs_variance" selected="True" /><SelectField field="fav_unfav" selected="True" /><SelectField field="material_miss" selected="True" /><SelectField field="near_miss" selected="True" /><SelectField field="FileName" selected="True" /><SelectField field="source_line" selected="True" /><SelectField field="*Unknown" selected="False" /></SelectFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Tidy columns</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>
+    <Node ToolID="21">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1170" y="230" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\variance_data.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>variance_data.csv (all rows)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="22">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter"><Position x="1170" y="340" /></GuiSettings>
+      <Properties><Configuration><Expression>[material_miss] = 1</Expression><Mode>Custom</Mode></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Material miss? (&gt;$25K and &gt;5%)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFilter" />
+    </Node>
+    <Node ToolID="23">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Sort.Sort"><Position x="1280" y="340" /></GuiSettings>
+      <Properties><Configuration><SortInfo locale="0"><Field field="abs_variance" order="Descending" /></SortInfo></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Biggest first</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSort" />
+    </Node>
+    <Node ToolID="24">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1390" y="340" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\material_misses.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>material_misses.csv</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="25">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter"><Position x="1170" y="450" /></GuiSettings>
+      <Properties><Configuration><Expression>[near_miss] = 1</Expression><Mode>Custom</Mode></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Near miss? (&gt;$25K, 4-5%)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFilter" />
+    </Node>
+    <Node ToolID="26">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1280" y="450" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\near_misses.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>near_misses.csv</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="102">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="810" y="559" width="895" height="360" /></GuiSettings>
+      <Properties><Configuration><Caption>4. Log every dropped row with its reason (nothing disappears silently)</Caption>
+        <Style TextColor="#314c4a" FillColor="#fbeeee" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="7">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join"><Position x="840" y="604" /></GuiSettings>
+      <Properties><Configuration joinByRecordPos="False"><JoinInfo connection="Left"><Field field="department_clean" /><Field field="month_date" /></JoinInfo><JoinInfo connection="Right"><Field field="department_clean" /><Field field="month_date" /></JoinInfo>
+      <SelectConfiguration><Configuration outputConnection="Join"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Match each duplicate to the row that was kept</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxJoin" />
+    </Node>
+    <Node ToolID="8">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="950" y="604" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression='IIF([budget_num] = [Right_budget_num] AND [actual_num] = [Right_actual_num],&#10;  "duplicate dept-month, identical to " + [Right_FileName] + " line " + ToString([Right_source_line]),&#10;  "duplicate dept-month, CONFLICTS with " + [Right_FileName] + " line " + ToString([Right_source_line]) +&#10;  " (kept: budget " + ToString([Right_budget_num], 0, 1) + ", actual " + ToString([Right_actual_num], 0, 1) + ")")' field="reason" size="254" type="V_String" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Identical or CONFLICTING duplicate?</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="9">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect"><Position x="1060" y="604" /></GuiSettings>
+      <Properties><Configuration><OrderChanged value="True" /><CommaDecimal value="False" /><SelectFields><SelectField field="Right_FileName" selected="False" /><SelectField field="Right_department" selected="False" /><SelectField field="Right_month" selected="False" /><SelectField field="Right_budget" selected="False" /><SelectField field="Right_actual" selected="False" /><SelectField field="Right_source_line" selected="False" /><SelectField field="Right_department_clean" selected="False" /><SelectField field="Right_month_txt" selected="False" /><SelectField field="Right_month_date" selected="False" /><SelectField field="Right_budget_txt" selected="False" /><SelectField field="Right_actual_txt" selected="False" /><SelectField field="Right_budget_num" selected="False" /><SelectField field="Right_actual_num" selected="False" /><SelectField field="Right_reason" selected="False" /><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Drop the matched row's columns</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>
+    <Node ToolID="10">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Union.Union"><Position x="1170" y="604" /></GuiSettings>
+      <Properties><Configuration><ByName_ErrorMode>Warning</ByName_ErrorMode><ByName_OutputMode>All</ByName_OutputMode><Mode>ByName</Mode><SetOutputOrder value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>All dropped rows</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxUnion" />
+    </Node>
+    <Node ToolID="11">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="1280" y="604" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression="1" field="dropped_flag" size="4" type="Int32" /><FormulaField expression='IIF(Contains([reason], "unreadable actual"), 1, 0)' field="unknown_actual" size="4" type="Int32" /><FormulaField expression='IIF(!Contains([reason], "identical") AND ((!IsNull([actual_num]) AND [actual_num] != 0) OR [unknown_actual] = 1), 1, 0)' field="spend_at_risk" size="4" type="Int32" /><FormulaField expression="IIF([spend_at_risk] = 1 AND !IsNull([actual_num]), [actual_num], 0)" field="actual_at_risk" size="8" type="Double" /><FormulaField expression="IIF(IsEmpty([reason]), 1, 0)" field="no_reason" size="4" type="Int32" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Flag spend at risk</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="12">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect"><Position x="1390" y="604" /></GuiSettings>
+      <Properties><Configuration><OrderChanged value="True" /><CommaDecimal value="False" /><SelectFields><SelectField field="FileName" selected="True" /><SelectField field="source_line" selected="True" /><SelectField field="department" selected="True" /><SelectField field="month" selected="True" /><SelectField field="budget" selected="True" /><SelectField field="actual" selected="True" /><SelectField field="reason" selected="True" /><SelectField field="spend_at_risk" selected="True" /><SelectField field="*Unknown" selected="False" /></SelectFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Columns for the log</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>
+    <Node ToolID="13">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1500" y="604" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\dropped_rows.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>dropped_rows.csv</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="50">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect"><Position x="1390" y="714" /></GuiSettings>
+      <Properties><Configuration><OrderChanged value="True" /><CommaDecimal value="False" /><SelectFields><SelectField field="dropped_flag" selected="True" /><SelectField field="spend_at_risk" selected="True" /><SelectField field="actual_at_risk" selected="True" /><SelectField field="unknown_actual" selected="True" /><SelectField field="no_reason" selected="True" /><SelectField field="*Unknown" selected="False" /></SelectFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Count columns only</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>
+    <Node ToolID="14">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.TextInput.TextInput"><Position x="1390" y="824" /></GuiSettings>
+      <Properties><Configuration><NumRows value="1" /><Fields><Field name="dropped_flag" /><Field name="spend_at_risk" /><Field name="actual_at_risk" /><Field name="unknown_actual" /><Field name="no_reason" /></Fields><Data><r><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c></r></Data></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Zero row: counts exist even when nothing is dropped</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxTextInput" />
+    </Node>
+    <Node ToolID="15">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Union.Union"><Position x="1500" y="769" /></GuiSettings>
+      <Properties><Configuration><ByName_ErrorMode>Warning</ByName_ErrorMode><ByName_OutputMode>All</ByName_OutputMode><Mode>ByName</Mode><SetOutputOrder value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Dropped + zero row</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxUnion" />
+    </Node>
+    <Node ToolID="16">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1610" y="769" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="dropped_flag" action="Sum" rename="rows_dropped" /><SummarizeField field="spend_at_risk" action="Sum" rename="spend_rows" /><SummarizeField field="actual_at_risk" action="Sum" rename="dropped_spend" /><SummarizeField field="unknown_actual" action="Sum" rename="unknown_actual_rows" /><SummarizeField field="no_reason" action="Sum" rename="rows_no_reason" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Dropped-row totals</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="104">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="1030" y="1010" width="675" height="360" /></GuiSettings>
+      <Properties><Configuration><Caption>5. Summaries: built from every row, not from the filter's False side</Caption>
+        <Style TextColor="#314c4a" FillColor="#ecf2f2" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="27">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1060" y="1055" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="department_clean" action="GroupBy" rename="department" /><SummarizeField field="budget_num" action="Sum" rename="budget" /><SummarizeField field="actual_num" action="Sum" rename="actual" /><SummarizeField field="variance" action="Sum" rename="variance" /><SummarizeField field="abs_variance" action="Sum" rename="gross_miss" /><SummarizeField field="material_miss" action="Sum" rename="material_misses" /><SummarizeField field="budget_for_phasing" action="Min" rename="min_month_budget" /><SummarizeField field="budget_for_phasing" action="Max" rename="max_month_budget" /><SummarizeField field="bad_budget" action="Sum" rename="bad_budget_months" /><SummarizeField field="phasing_ratio_flag" action="Max" rename="phasing_ratio_flag" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>By department</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node>
+    <Node ToolID="28">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="1170" y="1055" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression="IIF([budget] &gt; 0, [variance] / [budget], Null())" field="variance_pct" size="8" type="Double" /><FormulaField expression="1 - [gross_miss] / [budget]" field="gross_accuracy" size="8" type="Double" /><FormulaField expression='IIF([variance] &gt; 0, "Unfavorable", IIF([variance] &lt; 0, "Favorable", "On budget"))' field="fav_unfav" size="20" type="V_String" /><FormulaField expression="[max_month_budget] / [min_month_budget]" field="phasing_ratio" size="8" type="Double" /><FormulaField expression='IIF([phasing_ratio] &gt; [phasing_ratio_flag], "Question this phasing", "") +&#10;IIF([bad_budget_months] &gt; 0, IIF([phasing_ratio] &gt; [phasing_ratio_flag], "; ", "") + "has budget &lt;= 0 (ratio uses valid months only)", "")' field="phasing_flag" size="254" type="V_String" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Gross accuracy and budget phasing check</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="29">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Sort.Sort"><Position x="1280" y="1055" /></GuiSettings>
+      <Properties><Configuration><SortInfo locale="0"><Field field="variance" order="Descending" /></SortInfo></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Biggest overspend first</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSort" />
+    </Node>
+    <Node ToolID="30">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1390" y="1055" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\by_department.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>by_department.csv</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="31">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1060" y="1165" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="month_date" action="GroupBy" rename="month" /><SummarizeField field="budget_num" action="Sum" rename="budget" /><SummarizeField field="actual_num" action="Sum" rename="actual" /><SummarizeField field="variance" action="Sum" rename="variance" /><SummarizeField field="abs_variance" action="Sum" rename="gross_miss" /><SummarizeField field="material_miss" action="Sum" rename="material_misses" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>By month</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node>
+    <Node ToolID="32">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Sort.Sort"><Position x="1170" y="1165" /></GuiSettings>
+      <Properties><Configuration><SortInfo locale="0"><Field field="month" order="Ascending" /></SortInfo></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Date order (works for fiscal years)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSort" />
+    </Node>
+    <Node ToolID="33">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.RunningTotal.RunningTotal"><Position x="1280" y="1165" /></GuiSettings>
+      <Properties><Configuration><GroupByFields /><RunningTotalFields><Field field="variance" /></RunningTotalFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Year-to-date variance</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxRunningTotal" />
+    </Node>
+    <Node ToolID="34">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="1390" y="1165" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression="[RunTot_variance]" field="ytd_variance" size="8" type="Double" /><FormulaField expression='DateTimeFormat([month], "%b %Y")' field="month_label" size="20" type="V_String" /><FormulaField expression="1 - [gross_miss] / [budget]" field="gross_accuracy" size="8" type="Double" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Label and gross accuracy</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="35">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect"><Position x="1500" y="1165" /></GuiSettings>
+      <Properties><Configuration><OrderChanged value="True" /><CommaDecimal value="False" /><SelectFields><SelectField field="RunTot_variance" selected="False" /><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxSelect" />
+    </Node>
+    <Node ToolID="36">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="1610" y="1165" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\by_month.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>by_month.csv</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="37">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1060" y="1275" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="department_clean" action="Count" rename="rows_kept" /><SummarizeField field="budget_num" action="Sum" rename="total_budget" /><SummarizeField field="actual_num" action="Sum" rename="total_actual" /><SummarizeField field="variance" action="Sum" rename="net_variance" /><SummarizeField field="abs_variance" action="Sum" rename="gross_misses" /><SummarizeField field="over_budget" action="Sum" rename="over_budget" /><SummarizeField field="under_budget" action="Sum" rename="under_budget" /><SummarizeField field="material_miss" action="Sum" rename="material_misses" /><SummarizeField field="near_miss" action="Sum" rename="near_misses" /><SummarizeField field="bad_budget" action="Sum" rename="bad_budget_rows" /><SummarizeField field="pct_violation" action="Sum" rename="pct_violations" /><SummarizeField field="both_flags" action="Sum" rename="both_flags" /><SummarizeField field="allow_dropped_spend" action="Max" rename="allow_dropped_spend" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Company totals</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="105">
+      <GuiSettings Plugin="AlteryxGuiToolkit.ToolContainer.ToolContainer"><Position x="1790" y="1010" width="895" height="470" /></GuiSettings>
+      <Properties><Configuration><Caption>6. Integrity checks: the run errors out if the numbers don't hold together</Caption>
+        <Style TextColor="#314c4a" FillColor="#f3f0e6" BorderColor="#314c4a" Transparency="25" Margin="25" />
+        <Disabled value="False" /><Folded value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <ChildNodes>
+    <Node ToolID="38">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1820" y="1055" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="budget" action="Sum" rename="dept_budget" /><SummarizeField field="actual" action="Sum" rename="dept_actual" /><SummarizeField field="variance" action="Sum" rename="dept_variance" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Check: department totals</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node>
+    <Node ToolID="39">
+      <GuiSettings Plugin="AlteryxSpatialPluginsGui.Summarize.Summarize"><Position x="1820" y="1165" /></GuiSettings>
+      <Properties><Configuration><SummarizeFields><SummarizeField field="budget" action="Sum" rename="month_budget" /><SummarizeField field="actual" action="Sum" rename="month_actual" /><SummarizeField field="ytd_variance" action="Last" rename="ytd_last" /></SummarizeFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Check: monthly totals and YTD</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxSpatialPluginsEngine.dll" EngineDllEntryPoint="AlteryxSummarize" />
+    </Node>
+    <Node ToolID="40">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AppendFields.AppendFields"><Position x="1930" y="1275" /></GuiSettings>
+      <Properties><Configuration><CartesianMode>Error</CartesianMode><SelectConfiguration><Configuration outputConnection="Output"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>+ rows read</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxAppendFields" />
+    </Node>
+    <Node ToolID="41">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AppendFields.AppendFields"><Position x="2040" y="1275" /></GuiSettings>
+      <Properties><Configuration><CartesianMode>Error</CartesianMode><SelectConfiguration><Configuration outputConnection="Output"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>+ dropped totals</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxAppendFields" />
+    </Node>
+    <Node ToolID="42">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AppendFields.AppendFields"><Position x="2150" y="1275" /></GuiSettings>
+      <Properties><Configuration><CartesianMode>Error</CartesianMode><SelectConfiguration><Configuration outputConnection="Output"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>+ department check</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxAppendFields" />
+    </Node>
+    <Node ToolID="43">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AppendFields.AppendFields"><Position x="2260" y="1275" /></GuiSettings>
+      <Properties><Configuration><CartesianMode>Error</CartesianMode><SelectConfiguration><Configuration outputConnection="Output"><OrderChanged value="False" /><CommaDecimal value="False" /><SelectFields><SelectField field="*Unknown" selected="True" /></SelectFields></Configuration></SelectConfiguration></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>+ month check</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxAppendFields" />
+    </Node>
+    <Node ToolID="44">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula"><Position x="2370" y="1275" /></GuiSettings>
+      <Properties><Configuration><FormulaFields><FormulaField expression="1 - ABS([net_variance]) / [total_budget]" field="net_accuracy" size="8" type="Double" /><FormulaField expression="1 - [gross_misses] / [total_budget]" field="gross_accuracy" size="8" type="Double" /><FormulaField expression="[gross_misses] - ABS([net_variance])" field="cancelled_out" size="8" type="Double" /><FormulaField expression="IIF([rows_read] = [rows_kept] + [rows_dropped], 1, 0)" field="chk_rows_balance" size="4" type="Int32" /><FormulaField expression="IIF([rows_no_reason] = 0, 1, 0)" field="chk_dropped_reason" size="4" type="Int32" /><FormulaField expression="IIF(ABS([dept_budget] - [total_budget]) &lt; 0.01 AND ABS([dept_actual] - [total_actual]) &lt; 0.01&#10;    AND ABS([dept_variance] - [net_variance]) &lt; 0.01, 1, 0)" field="chk_dept_totals" size="4" type="Int32" /><FormulaField expression="IIF(ABS([month_budget] - [total_budget]) &lt; 0.01 AND ABS([month_actual] - [total_actual]) &lt; 0.01, 1, 0)" field="chk_month_totals" size="4" type="Int32" /><FormulaField expression="IIF(ABS([ytd_last] - [net_variance]) &lt; 0.01, 1, 0)" field="chk_ytd_ends_at_net" size="4" type="Int32" /><FormulaField expression="IIF([gross_misses] + 0.01 &gt;= ABS([net_variance]), 1, 0)" field="chk_gross_ge_net" size="4" type="Int32" /><FormulaField expression="IIF([both_flags] = 0, 1, 0)" field="chk_flags_exclusive" size="4" type="Int32" /><FormulaField expression="IIF([pct_violations] = 0, 1, 0)" field="chk_pct_only_valid_budget" size="4" type="Int32" /><FormulaField expression='REGEX_Replace(&#10;  IIF([chk_rows_balance] = 0, "rows read &lt;&gt; kept + dropped; ", "") +&#10;  IIF([chk_dropped_reason] = 0, "a dropped row has no reason; ", "") +&#10;  IIF([chk_dept_totals] = 0, "department totals &lt;&gt; grand total; ", "") +&#10;  IIF([chk_month_totals] = 0, "monthly totals &lt;&gt; annual total; ", "") +&#10;  IIF([chk_ytd_ends_at_net] = 0, "YTD variance &lt;&gt; net variance; ", "") +&#10;  IIF([chk_gross_ge_net] = 0, "gross misses &lt; |net variance|; ", "") +&#10;  IIF([chk_flags_exclusive] = 0, "material and near-miss flags overlap; ", "") +&#10;  IIF([chk_pct_only_valid_budget] = 0, "variance % on a budget &lt;= 0; ", ""),&#10;";\s*$", "")' field="failed_checks" size="1000" type="V_String" /><FormulaField expression="IIF(IsEmpty([failed_checks]), 1, 0)" field="all_checks_pass" size="4" type="Int32" /><FormulaField expression="IIF([spend_rows] = 0, &quot;Pass&quot;,&#10;  IIF([allow_dropped_spend] = 1,&#10;    &quot;OVERRIDDEN: $&quot; + ToString([dropped_spend], 0, 1) + &quot; of actual spend&quot; +&#10;    IIF([unknown_actual_rows] &gt; 0, &quot; plus &quot; + ToString([unknown_actual_rows]) + &quot; row(s) whose actual couldn't be read&quot;, &quot;&quot;) +&#10;    &quot; dropped (see dropped_rows.csv)&quot;,&#10;    &quot;FAIL&quot;))" field="dropped_spend_status" size="1000" type="V_String" /></FormulaFields></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Accuracy, 8 integrity checks, dropped-spend rule</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxFormula" />
+    </Node>
+    <Node ToolID="45">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput"><Position x="2480" y="1165" /></GuiSettings>
+      <Properties><Configuration><File MaxRecords="" FileFormat="0">output\summary.csv</File><Passwords />
+      <FormatSpecificOptions><LineEndStyle>CRLF</LineEndStyle><Delimeter>,</Delimeter><ForceQuotes>False</ForceQuotes>
+      <HeaderRow>True</HeaderRow><CodePage>28591</CodePage><WriteBOM>False</WriteBOM></FormatSpecificOptions>
+      <MultiFile value="False" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>summary.csv (headline numbers and every check)</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxDbFileOutput" />
+    </Node>
+    <Node ToolID="46">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Message.Message"><Position x="2480" y="1275" /></GuiSettings>
+      <Properties><Configuration><When>Filter</When><Filter>[dropped_spend_status] = "FAIL"</Filter><Type>Error</Type><Priority>High</Priority>
+      <Transient>False</Transient><MessageExpression>"STOPPED: $" + ToString([dropped_spend], 0, 1) + " of actual spend" + IIF([unknown_actual_rows] &gt; 0, " plus " + ToString([unknown_actual_rows]) + " row(s) whose actual couldn't be read", "") + " is on rows that were dropped (" + ToString([spend_rows]) + " rows, listed in dropped_rows.csv). Fix the source files, or set allow_dropped_spend = 1 in the SETTINGS tool to report it and continue."</MessageExpression></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Error if real spend was dropped</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxMessage" />
+    </Node>
+    <Node ToolID="47">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Message.Message"><Position x="2480" y="1385" /></GuiSettings>
+      <Properties><Configuration><When>Filter</When><Filter>[all_checks_pass] = 0</Filter><Type>Error</Type><Priority>High</Priority>
+      <Transient>False</Transient><MessageExpression>"Integrity checks failed: " + [failed_checks]</MessageExpression></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Error if any check fails</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxMessage" />
+    </Node>
+    <Node ToolID="48">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Message.Message"><Position x="2590" y="1275" /></GuiSettings>
+      <Properties><Configuration><When>Filter</When><Filter>StartsWith([dropped_spend_status], "OVERRIDDEN")</Filter><Type>Warning</Type><Priority>High</Priority>
+      <Transient>False</Transient><MessageExpression>"Dropped-spend check " + [dropped_spend_status]</MessageExpression></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Warn when overridden</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxMessage" />
+    </Node>
+    <Node ToolID="49">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Message.Message"><Position x="2590" y="1385" /></GuiSettings>
+      <Properties><Configuration><When>Filter</When><Filter>[all_checks_pass] = 1 AND [dropped_spend_status] = "Pass"</Filter><Type>Message</Type><Priority>High</Priority>
+      <Transient>False</Transient><MessageExpression>"Integrity: all checks passed. " + ToString([rows_read]) + " rows read, " + ToString([rows_kept]) + " kept, " + ToString([rows_dropped]) + " dropped. Net accuracy " + ToString([net_accuracy] * 100, 1) + "%, gross accuracy " + ToString([gross_accuracy] * 100, 1) + "%, " + ToString([material_misses]) + " material misses."</MessageExpression></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText>Success message</AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsEngine.dll" EngineDllEntryPoint="AlteryxMessage" />
+    </Node></ChildNodes>
+    </Node>
+    <Node ToolID="90">
+      <GuiSettings Plugin="AlteryxGuiToolkit.TextBox.TextBox"><Position x="60" y="40" width="760" height="110" /></GuiSettings>
+      <Properties><Configuration><Text>FP&amp;A Budget Variance Pipeline (Alteryx)  |  Karthik Bommisetty
+Reads every department's budget vs actual file, accounts for every row, and shows why 99.8% net accuracy hides $1.21M of misses (95.7% gross).
+Thresholds live in the SETTINGS tool. Results go to the output folder; the Results window says whether every integrity check passed.</Text><Font name="Segoe UI" size="10" style="0" />
+        <TextColor name="Black" /><FillColor r="225" g="231" b="242" />
+        <Shape shape="0" /><Justification Justification="0" /></Configuration><Annotation DisplayMode="0"><Name /><AnnotationText></AnnotationText><DefaultAnnotationText /><Left value="False" /></Annotation></Properties>
+    </Node>
+  </Nodes>
+  <Connections>
+    <Connection><Origin ToolID="1" Connection="Output" /><Destination ToolID="2" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="2" Connection="Output" /><Destination ToolID="3" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="2" Connection="Output" /><Destination ToolID="4" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="4" Connection="Output" /><Destination ToolID="5" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="5" Connection="True" /><Destination ToolID="6" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="6" Connection="Unique" /><Destination ToolID="18" Connection="Targets" /></Connection>
+    <Connection><Origin ToolID="17" Connection="Output" /><Destination ToolID="18" Connection="Source" /></Connection>
+    <Connection><Origin ToolID="18" Connection="Output" /><Destination ToolID="19" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="19" Connection="Output" /><Destination ToolID="20" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="20" Connection="Output" /><Destination ToolID="21" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="20" Connection="Output" /><Destination ToolID="22" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="22" Connection="True" /><Destination ToolID="23" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="23" Connection="Output" /><Destination ToolID="24" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="20" Connection="Output" /><Destination ToolID="25" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="25" Connection="True" /><Destination ToolID="26" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="6" Connection="Duplicates" /><Destination ToolID="7" Connection="Left" /></Connection>
+    <Connection><Origin ToolID="6" Connection="Unique" /><Destination ToolID="7" Connection="Right" /></Connection>
+    <Connection><Origin ToolID="7" Connection="Join" /><Destination ToolID="8" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="8" Connection="Output" /><Destination ToolID="9" Connection="Input" /></Connection>
+    <Connection name="#1"><Origin ToolID="5" Connection="False" /><Destination ToolID="10" Connection="Input" /></Connection>
+    <Connection name="#2"><Origin ToolID="9" Connection="Output" /><Destination ToolID="10" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="10" Connection="Output" /><Destination ToolID="11" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="11" Connection="Output" /><Destination ToolID="12" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="12" Connection="Output" /><Destination ToolID="13" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="11" Connection="Output" /><Destination ToolID="50" Connection="Input" /></Connection>
+    <Connection name="#1"><Origin ToolID="50" Connection="Output" /><Destination ToolID="15" Connection="Input" /></Connection>
+    <Connection name="#2"><Origin ToolID="14" Connection="Output" /><Destination ToolID="15" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="15" Connection="Output" /><Destination ToolID="16" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="19" Connection="Output" /><Destination ToolID="27" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="27" Connection="Output" /><Destination ToolID="28" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="28" Connection="Output" /><Destination ToolID="29" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="29" Connection="Output" /><Destination ToolID="30" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="19" Connection="Output" /><Destination ToolID="31" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="31" Connection="Output" /><Destination ToolID="32" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="32" Connection="Output" /><Destination ToolID="33" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="33" Connection="Output" /><Destination ToolID="34" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="34" Connection="Output" /><Destination ToolID="35" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="35" Connection="Output" /><Destination ToolID="36" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="19" Connection="Output" /><Destination ToolID="37" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="29" Connection="Output" /><Destination ToolID="38" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="34" Connection="Output" /><Destination ToolID="39" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="37" Connection="Output" /><Destination ToolID="40" Connection="Targets" /></Connection>
+    <Connection><Origin ToolID="3" Connection="Output" /><Destination ToolID="40" Connection="Source" /></Connection>
+    <Connection><Origin ToolID="40" Connection="Output" /><Destination ToolID="41" Connection="Targets" /></Connection>
+    <Connection><Origin ToolID="16" Connection="Output" /><Destination ToolID="41" Connection="Source" /></Connection>
+    <Connection><Origin ToolID="41" Connection="Output" /><Destination ToolID="42" Connection="Targets" /></Connection>
+    <Connection><Origin ToolID="38" Connection="Output" /><Destination ToolID="42" Connection="Source" /></Connection>
+    <Connection><Origin ToolID="42" Connection="Output" /><Destination ToolID="43" Connection="Targets" /></Connection>
+    <Connection><Origin ToolID="39" Connection="Output" /><Destination ToolID="43" Connection="Source" /></Connection>
+    <Connection><Origin ToolID="43" Connection="Output" /><Destination ToolID="44" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="44" Connection="Output" /><Destination ToolID="45" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="44" Connection="Output" /><Destination ToolID="46" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="44" Connection="Output" /><Destination ToolID="47" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="44" Connection="Output" /><Destination ToolID="48" Connection="Input" /></Connection>
+    <Connection><Origin ToolID="44" Connection="Output" /><Destination ToolID="49" Connection="Input" /></Connection>
+  </Connections>
+  <Properties>
+    <Memory default="True" /><GlobalRecordLimit value="0" /><TempFiles default="True" />
+    <Annotation on="True" includeToolName="False" />
+    <ConvErrorLimit value="10" /><ConvErrorLimit_Stop value="False" />
+    <CancelOnError value="False" />
+    <DisableBrowse value="False" /><EnablePerformanceProfiling value="False" /><RunWithE2 value="True" />
+    <SortedGrouping value="True" /><PredictiveToolsCodePage value="1252" /><DisableAllOutput value="False" />
+    <ShowAllMacroMessages value="False" /><ShowConnectionStatusIsOn value="True" />
+    <ShowConnectionStatusOnlyWhenRunning value="True" /><ZoomLevel value="0" /><LayoutType>Horizontal</LayoutType>
+    <MetaInfo><NameIsFileName value="True" /><Name>FPA_Variance_Pipeline</Name>
+      <Description>Budget vs actual variance pipeline: row accounting, materiality, net vs gross accuracy, integrity checks.</Description>
+      <RootToolName /><ToolVersion /><ToolInDb value="False" /><CategoryName /><SearchTags />
+      <Author>Karthik Bommisetty</Author><Company /><Copyright /><DescriptionLink actual="" displayed="" />
+      <Example><Description /><File /></Example></MetaInfo>
+    <Events><Enabled value="True" /></Events>
+  </Properties>
+</AlteryxDocument>

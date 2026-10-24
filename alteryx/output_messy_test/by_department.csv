@@ -1,0 +1,4 @@
+department,budget,actual,variance,gross_miss,material_misses,min_month_budget,max_month_budget,bad_budget_months,phasing_ratio_flag,variance_pct,gross_accuracy,fav_unfav,phasing_ratio,phasing_flag
+Marketing,150000,157000,7000,9000,0,50000,100000,0,10,4.66666666666667e-02,0.94,Unfavorable,2,""
+Sales,199000,200500,1500,1500,0,200000,200000,1,10,7.53768844221105e-03,0.992462311557789,Unfavorable,1,has budget <= 0 (ratio uses valid months only)
+Customer Success,80000,76000,-4000,4000,0,80000,80000,0,10,-0.05,0.95,Favorable,1,""

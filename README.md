@@ -4,7 +4,14 @@
 
 **[Try the interactive version →](https://karthikvenkata-create.github.io/fpa.html)** · [My website](https://karthikvenkata-create.github.io) · [LinkedIn](https://www.linkedin.com/in/karthik-bommisetty)
 
-I rebuilt my Excel budget-vs-actual project as a Python pipeline. It turns any department-by-month budget vs actual file into a variance report, accounts for every row it reads, checks its own math on every run, and on my 2024 file it matches my Excel workbook to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
+I rebuilt my Excel budget-vs-actual project as an automated pipeline, in two versions that give identical numbers:
+
+- **[Alteryx Designer workflow](alteryx/)**: the main version. It reads each department's own file with a wildcard input, logs every dropped row with its reason, and raises an error in the Results window if the numbers don't hold together.
+- **Python pipeline** (this folder): the tested reference. 32 pytest tests, including 4 that check the Alteryx outputs against it.
+
+Both turn any department-by-month budget vs actual data into a variance report, account for every row they read, and match my original Excel workbook to the dollar. The data covers $28.2M of 2024 operating spend across 8 departments and 12 months, 96 department-months in total.
+
+![Alteryx canvas](alteryx/images/alteryx_canvas.png)
 
 > The data is a practice dataset, not a real company's books. The monthly budget phasing in particular is synthetic (see [About the data](#about-the-data)), so the timing patterns below show the method rather than a real finding.
 
@@ -58,7 +65,7 @@ Here's what that means for the analysis. The annual and department-level numbers
 
 ## Pipeline
 
-The steps follow the same order you'd lay out on an Alteryx Designer canvas:
+Both versions run the same steps. The [Alteryx README](alteryx/) maps each one to its tools, and lists five mistakes in a first-draft Alteryx plan that would have produced wrong numbers. The Python version:
 
 ```mermaid
 flowchart LR
@@ -107,12 +114,16 @@ Excel is still the right tool for the final output a finance manager actually op
 
 ## Run it
 
+**Alteryx:** open `alteryx/FPA_Variance_Pipeline.yxmd` in Designer and press Run (details in [alteryx/README.md](alteryx/)).
+
+**Python:**
+
 ```bash
 pip install -r requirements.txt
 python pipeline.py                                    # the 2024 data
 python pipeline.py tests/fixtures/messy_sample.csv    # stops: rows with real spend were dropped
 python pipeline.py tests/fixtures/messy_sample.csv --allow-dropped-spend   # report it and continue
-python -m pytest                                      # 28 tests
+python -m pytest                                      # 32 tests, incl. Alteryx-vs-Python cross-check
 ```
 
 Outputs land in `output/variance_report.xlsx` and `images/`.
@@ -120,7 +131,14 @@ Outputs land in `output/variance_report.xlsx` and `images/`.
 ## Repo layout
 
 ```
-├── pipeline.py                        # the whole pipeline
+├── alteryx/
+│   ├── FPA_Variance_Pipeline.yxmd         # the Alteryx workflow (reads data/departments/*.csv)
+│   ├── FPA_Variance_Pipeline_messy_test.yxmd
+│   ├── build_workflow.py                  # generates both .yxmd files from one definition
+│   ├── data/departments/                  # one CSV per department
+│   ├── output/, output_messy_test/        # outputs from my Designer runs
+│   └── README.md
+├── pipeline.py                        # the Python pipeline
 ├── data/budget_vs_actual_2024.csv     # 96 dept-months, raw input
 ├── output/variance_report.xlsx        # Summary, Material Misses, Near Misses, By Department, By Month,
 │                                      # Budget Phasing, Data Quality, Dropped Rows, Integrity Checks,
@@ -131,6 +149,7 @@ Outputs land in `output/variance_report.xlsx` and `images/`.
 │   ├── test_cleanse.py                # messy input: dropped-row reasons, duplicates, parsing
 │   ├── test_integrity.py              # new and fiscal-year data, lost rows, dropped spend, bad budgets
 │   ├── test_baseline_2024.py          # one-time match to the Excel v2 workbook
+│   ├── test_alteryx_matches_python.py # Alteryx outputs = Python results
 │   └── fixtures/messy_sample.csv
 └── requirements.txt
 ```
@@ -145,6 +164,7 @@ The natural next step is a full-year reforecast: given actuals through September
 |---|---|---|---|
 | v1 | Mar 2026 | Excel + Power Query | Original dashboard, reported 99.8% accuracy |
 | v2 | Oct 2026 | Excel rebuild | Fixed sign logic, added gross accuracy, materiality, YTD timing |
-| v3 | Oct 2026 | Python pipeline | This repo. Same numbers, plus integrity checks, row accounting, data-quality flags, near misses and tests |
+| v3 | Oct 2026 | Python pipeline | Same numbers, plus integrity checks, row accounting, data-quality flags, near misses and tests |
+| v4 | Oct 2026 | Alteryx Designer | The same pipeline as a Designer workflow reading each department's file, cross-checked against v3 |
 
-**Tools:** Python (pandas, matplotlib, openpyxl, pytest) · Excel · Power Query · Alteryx Designer Core certified
+**Tools:** Alteryx Designer (Core certified) · Python (pandas, matplotlib, openpyxl, pytest) · Excel · Power Query
